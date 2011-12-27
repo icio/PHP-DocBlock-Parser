@@ -3,6 +3,7 @@
 /**
  * Parse the docblock of a function or method
  * @author Paul Scott <paul@duedil.com>
+ * {@link http://www.github.com/icio/PHP-DocBlock-Parser}
  */
 class DocBlock
 {
@@ -55,13 +56,8 @@ class DocBlock
    */
   public static function of($ref)
   {
-    if (
-      $ref instanceof ReflectionClass ||
-      $ref instanceof ReflectionFunctionAbstract ||
-      $ref instanceof ReflectionProperty
-    )
-      return new DocBlock($ref->getDocComment());
-    
+    if (method_exists($ref, 'getDocComment'))
+      return new DocBlock($ref->getDocComment()); 
     return null;
   }
 
@@ -69,13 +65,42 @@ class DocBlock
    * ==================================
    */
 
+  /**
+   * Tags in the docblock that have a whitepace-delimited number of parameters
+   * (such as `@param type var desc` and `@return type desc`) and the names of
+   * those parameters.
+   * 
+   * @type Array
+   */
   public static $vectors = array(
-    '@param' => array('type', 'var', 'desc'),
-    '@return' => array('type', 'desc'),
+    'param' => array('type', 'var', 'desc'),
+    'return' => array('type', 'desc'),
   );
   
+  /**
+   * The description of the symbol
+   * @type String
+   */
   public $desc;
+
+  /**
+   * The tags defined in the docblock.
+   * 
+   * The array has keys which are the tag names (excluding the @) and values
+   * that are arrays, each of which is an entry for the tag.
+   * 
+   * In the case where the tag name is defined in {@see DocBlock::$vectors} the
+   * value within the tag-value array is an array in itself with keys as
+   * described by {@see DocBlock::$vectors}.
+   * 
+   * @type Array
+   */
   public $tags;
+
+  /**
+   * The entire DocBlock comment that was parsed.
+   * @type String
+   */
   public $comment;
 
   /**
@@ -98,6 +123,15 @@ class DocBlock
     $this->tags = array();
     $this->comment = $comment;
 
+    $this->parseComment($comment);
+  }
+
+  /**
+   * Parse the comment into the component parts and set the state of the object.
+   * @param  String $comment The docblock
+   */
+  protected function parseComment($comment)
+  {
     // Strip the opening and closing tags of the docblock
     $comment = substr($comment, 3, -2);
 
@@ -138,7 +172,7 @@ class DocBlock
       else
       {
         // This block is tagged
-        $tag = substr(self::tag($body), 1);
+        $tag = substr(self::strTag($body), 1);
         $body = ltrim(substr($body, strlen($tag)+2));
         
         if (isset(self::$vectors[$tag])) {
@@ -172,7 +206,38 @@ class DocBlock
    */
   public function hasTag($tag)
   {
-    return array_key_exists($tag, $this->tags);
+    return is_array($this->tags) && array_key_exists($tag, $this->tags);
+  }
+
+  /**
+   * The value of a tag
+   * @param  String $tag
+   * @return Array
+   */
+  public function tag($tag)
+  {
+    return $this->hasTag($tag) ? $this->tags[$tag] : null;
+  }
+
+  /**
+   * The value of a tag (concatenated for multiple values)
+   * @param  String $tag
+   * @param  string $sep The seperator for concatenating
+   * @return String
+   */
+  public function tagImplode($tag, $sep = ' ')
+  {
+    return $this->hasTag($tag) ? implode($sep, $this->tags[$tag]) : null;
+  }
+
+  /**
+   * The value of a tag (merged recursively)
+   * @param  String $tag
+   * @return Array
+   */
+  public function tagMerge($tag)
+  {
+    return $this->hasTag($tag) ? array_merge_recursive($this->tags[$tag]) : null;
   }
 
   /*
@@ -194,7 +259,7 @@ class DocBlock
    * @param  String $str
    * @return String|null
    */
-  public static function tag($str)
+  public static function strTag($str)
   {
     if (preg_match('/^@[a-z0-9_]+/', $str, $matches))
       return $matches[0];
